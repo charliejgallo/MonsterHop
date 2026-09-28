@@ -12,7 +12,48 @@ permissions:
   contents: write
 
 jobs:
+  # the HD pack (monsterhop_hd.pak), from the HD renders in art/ and the
+  # packer in AmoledOS: once, for both builds
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Which AmoledOS
+        id: aos
+        run: echo "ref=$(tr -d ' \r\n' < amoledos.ref)" >> "$GITHUB_OUTPUT"
+
+      # the packer and the levels, the interface's art and each folder's list
+      - uses: actions/checkout@v4
+        with:
+          repository: charliejgallo/ESP32S3_AmoledOS
+          ref: ${{ steps.aos.outputs.ref }}
+          path: amoledos
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /apps/monsterhop/tools/
+            /apps/monsterhop/assets/*/meta.json
+            /apps/monsterhop/assets/ui/
+            /apps/monsterhop/assets/_test/
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Pack
+        run: |
+          pip install numpy pillow
+          MH_HD_ASSETS="$PWD/art/hd" MH_BACKDROPS="$PWD/art/backdrops" \
+            python3 amoledos/apps/monsterhop/tools/pack_assets.py --hd
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: monsterhop_hd.pak
+          path: amoledos/apps/monsterhop/assets/monsterhop_hd.pak
+          compression-level: 0
+
   build:
+    needs: pack
     strategy:
       fail-fast: false
       matrix:
@@ -36,7 +77,8 @@ jobs:
           echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       # only what the game is made of: its code, the pack, the fonts, the
-      # translations and the HAL's headers (not the 95 MB of renders)
+      # translations and the HAL's headers (not the renders; the HD pack
+      # comes from the job above)
       - uses: actions/checkout@v4
         with:
           repository: charliejgallo/ESP32S3_AmoledOS
@@ -53,6 +95,11 @@ jobs:
             /components/aos_ui/aos_lang_embedded.h
             /components/aos_ui/aos_theme.c
             /components/aos_hal/include/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: monsterhop_hd.pak
+          path: amoledos/apps/monsterhop/assets
 
       - name: Tools (Windows)
         if: matrix.os == 'windows-latest'
@@ -92,7 +139,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           mkdir -p dist/MonsterHop
-          cp build/MonsterHop.exe build/monsterhop.pak dist/MonsterHop/
+          cp build/MonsterHop.exe build/monsterhop.pak build/monsterhop_hd.pak dist/MonsterHop/
           cp README.md dist/MonsterHop/README.txt
           cd dist && zip -r MonsterHop-Windows.zip MonsterHop
 

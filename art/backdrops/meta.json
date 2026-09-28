@@ -1,0 +1,68 @@
+{
+ "backdrop_bay": {
+  "files": {
+   "img": "backdrop_bay.png",
+   "img_1x": "backdrop_bay_1x.png"
+  },
+  "h": 1800,
+  "h_1x": 900,
+  "horizon": 0.4,
+  "w": 2600,
+  "w_1x": 1300
+ },
+ "backdrop_castle": {
+  "files": {
+   "img": "backdrop_castle.png",
+   "img_1x": "backdrop_castle_1x.png"
+  },
+  "h": 1800,
+  "h_1x": 900,
+  "horizon": 0.4,
+  "w": 2600,
+  "w_1x": 1300
+ },
+ "backdrop_city": {
+  "files": {
+   "img": "backdrop_city.png",
+   "img_1x": "backdrop_city_1x.png"
+  },
+  "h": 1800,
+  "h_1x": 900,
+  "horizon": 0.4,
+  "w": 2600,
+  "w_1x": 1300
+ },
+ "backdrop_desert": {
+  "files": {
+   "img": "backdrop_desert.png",
+   "img_1x": "backdrop_desert_1x.png"
+  },
+  "h": 1800,
+  "h_1x": 900,
+  "horizon": 0.4,
+  "w": 2600,
+  "w_1x": 1300
+ },
+ "backdrop_dino": {
+  "files": {
+   "img": "backdrop_dino.png",
+   "img_1x": "backdrop_dino_1x.png"
+  },
+  "h": 1800,
+  "h_1x": 900,
+  "horizon": 0.4,
+  "w": 2600,
+  "w_1x": 1300
+ },
+ "backdrop_forest": {
+  "files": {
+   "img": "backdrop_forest.png",
+   "img_1x": "backdrop_forest_1x.png"
+  },
+  "h": 1800,
+  "h_1x": 900,
+  "horizon": 0.4,
+  "w": 2600,
+  "w_1x": 1300
+ }
+}
