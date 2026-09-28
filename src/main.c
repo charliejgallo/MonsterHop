@@ -7,12 +7,13 @@
  * letterboxed; the game's panels keep the watch's column in the middle.
  *
  * Controls
- *   arrows / WASD      hop (held: keeps hopping)
+ *   arrows / WASD      hop (held: keeps hopping); the menus
  *   Space / Enter      the watch's button: lever, crate, chest, super hop
  *   Esc / P            pause; on the menus, back
  *   Backspace          back
  *   F11, Alt+Enter     full screen
  *   a gamepad          d-pad or stick to hop, A the button, Start pause, B back
+ * Two players on one screen: input.c.
  */
 #include "desktop.h"
 
@@ -28,11 +29,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define REPEAT_FIRST_MS 200
-#define REPEAT_MS       120
-#define STICK_ON        16000
-#define STICK_OFF       9000
 
 static SDL_Window *s_win;
 static SDL_Renderer *s_ren;
@@ -107,8 +103,6 @@ static void dev_shots(void)
     n++;
 }
 
-static void dev_keys(void);
-
 /* ---- the window ---- */
 
 static void present(void)
@@ -139,6 +133,19 @@ static void toggle_fullscreen(void)
     bool fs = (SDL_GetWindowFlags(s_win) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
     SDL_SetWindowFullscreen(s_win, fs ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
     aos_hal_pref_set_i32("dk_full", fs ? 0 : 1);
+}
+
+/* full screen, whatever the game is doing */
+static bool hotkey(const SDL_KeyboardEvent *e)
+{
+    SDL_Keycode k = e->keysym.sym;
+    bool alt = (e->keysym.mod & KMOD_ALT) != 0, gui = (e->keysym.mod & KMOD_GUI) != 0;
+    if (k == SDLK_F11 || ((alt || gui) && (k == SDLK_RETURN || k == SDLK_KP_ENTER)) ||
+        (gui && (e->keysym.mod & KMOD_CTRL) && k == SDLK_f)) {
+        if (!e->repeat) toggle_fullscreen();
+        return true;
+    }
+    return false;
 }
 
 /* the biggest whole multiple of the frame that fits the screen, else the
@@ -182,157 +189,6 @@ static void language(void)
     aos_i18n_app_load("demo.monsterhop");
 }
 
-/* ---- controls ---- */
-
-enum { SRC_NONE = 0, SRC_KEYS, SRC_PAD };
-
-static int s_held_dir = -1;
-static int s_held_src;
-static uint64_t s_held_next;
-static SDL_GameController *s_pad;
-static int s_stick_dir = -1;
-
-/* a way pressed: a hop while playing, the highlight on the menus */
-static void dir_press(int dir)
-{
-    if (!s_game || !mha_key_hop(s_game, dir)) dk_nav_dir(dir);
-}
-
-static void hop(int dir, int src)
-{
-    if (!s_game) return;
-    dir_press(dir);
-    s_held_dir = dir;
-    s_held_src = src;
-    s_held_next = SDL_GetTicks64() + REPEAT_FIRST_MS;
-}
-
-static void release(int dir, int src)
-{
-    if (s_held_dir == dir && s_held_src == src) s_held_dir = -1;
-}
-
-static void held_tick(void)
-{
-    if (s_held_dir < 0 || !s_game) return;
-    uint64_t now = SDL_GetTicks64();
-    if (now < s_held_next) return;
-    dir_press(s_held_dir);
-    s_held_next = now + REPEAT_MS;
-}
-
-static void back_or_quit(void)
-{
-    if (s_game && !mha_key_back(s_game)) aos_ui_back();
-}
-
-static void pause_or_back(void)
-{
-    if (s_game && !mha_key_pause(s_game)) back_or_quit();
-}
-
-static int key_dir(SDL_Keycode k)
-{
-    switch (k) {
-    case SDLK_UP: case SDLK_w: return DIR_N;
-    case SDLK_RIGHT: case SDLK_d: return DIR_E;
-    case SDLK_DOWN: case SDLK_s: return DIR_S;
-    case SDLK_LEFT: case SDLK_a: return DIR_W;
-    default: return -1;
-    }
-}
-
-static void on_key(const SDL_KeyboardEvent *e, bool down)
-{
-    SDL_Keycode k = e->keysym.sym;
-    int dir = key_dir(k);
-    if (!down) {
-        if (dir >= 0) release(dir, SRC_KEYS);
-        return;
-    }
-    if (e->repeat) return;
-    bool alt = (e->keysym.mod & KMOD_ALT) != 0, gui = (e->keysym.mod & KMOD_GUI) != 0;
-    if (k == SDLK_F11 || ((alt || gui) && (k == SDLK_RETURN || k == SDLK_KP_ENTER)) ||
-        (gui && (e->keysym.mod & KMOD_CTRL) && k == SDLK_f)) {
-        toggle_fullscreen();
-        return;
-    }
-    if (dir >= 0) {
-        hop(dir, SRC_KEYS);
-        return;
-    }
-    switch (k) {
-    case SDLK_SPACE: case SDLK_RETURN: case SDLK_KP_ENTER: case SDLK_z: case SDLK_j:
-        if (s_game && !mha_key_action(s_game)) dk_nav_enter();
-        break;
-    case SDLK_ESCAPE: case SDLK_p:
-        pause_or_back();
-        break;
-    case SDLK_BACKSPACE:
-        back_or_quit();
-        break;
-    default:
-        break;
-    }
-}
-
-static int pad_dir(int b)
-{
-    switch (b) {
-    case SDL_CONTROLLER_BUTTON_DPAD_UP: return DIR_N;
-    case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: return DIR_E;
-    case SDL_CONTROLLER_BUTTON_DPAD_DOWN: return DIR_S;
-    case SDL_CONTROLLER_BUTTON_DPAD_LEFT: return DIR_W;
-    default: return -1;
-    }
-}
-
-static void on_pad_button(int b, bool down)
-{
-    int dir = pad_dir(b);
-    if (dir >= 0) {
-        if (down) hop(dir, SRC_PAD);
-        else release(dir, SRC_PAD);
-        return;
-    }
-    if (!down || !s_game) return;
-    switch (b) {
-    case SDL_CONTROLLER_BUTTON_A: case SDL_CONTROLLER_BUTTON_X:
-        if (!mha_key_action(s_game)) dk_nav_enter();
-        break;
-    case SDL_CONTROLLER_BUTTON_START: pause_or_back(); break;
-    case SDL_CONTROLLER_BUTTON_B: case SDL_CONTROLLER_BUTTON_BACK: back_or_quit(); break;
-    default: break;
-    }
-}
-
-/* the left stick as a d-pad, with some hysteresis */
-static void stick_tick(void)
-{
-    if (!s_pad) return;
-    int x = SDL_GameControllerGetAxis(s_pad, SDL_CONTROLLER_AXIS_LEFTX);
-    int y = SDL_GameControllerGetAxis(s_pad, SDL_CONTROLLER_AXIS_LEFTY);
-    int ax = abs(x), ay = abs(y);
-    int dir = -1;
-    int lim = s_stick_dir >= 0 ? STICK_OFF : STICK_ON;
-    if (ax > lim || ay > lim) dir = ax > ay ? (x > 0 ? DIR_E : DIR_W) : (y > 0 ? DIR_S : DIR_N);
-    if (dir == s_stick_dir) return;
-    if (s_stick_dir >= 0) release(s_stick_dir, SRC_PAD + 1);
-    s_stick_dir = dir;
-    if (dir >= 0) hop(dir, SRC_PAD + 1);
-}
-
-static void pad_open(void)
-{
-    if (s_pad) return;
-    for (int i = 0; i < SDL_NumJoysticks(); i++) {
-        if (SDL_IsGameController(i) && (s_pad = SDL_GameControllerOpen(i))) {
-            aos_hal_log("pad", "%s", SDL_GameControllerName(s_pad));
-            return;
-        }
-    }
-}
-
 static void dev_keys(void)
 {
     static const char *p;
@@ -349,15 +205,19 @@ static void dev_keys(void)
         return;
     }
     k++;
-    if (!strncmp(k, "up", 2)) dir_press(DIR_N);
-    else if (!strncmp(k, "down", 4)) dir_press(DIR_S);
-    else if (!strncmp(k, "left", 4)) dir_press(DIR_W);
-    else if (!strncmp(k, "right", 5)) dir_press(DIR_E);
-    else if (!strncmp(k, "act", 3)) {
-        if (!mha_key_action(s_game)) dk_nav_enter();
+    /* "2" before a key: player two's */
+    int pl = 0;
+    if (*k == '2') {
+        pl = 1;
+        k++;
     }
-    else if (!strncmp(k, "pause", 5)) pause_or_back();
-    else if (!strncmp(k, "back", 4)) back_or_quit();
+    if (!strncmp(k, "up", 2)) dk_input_dir(pl, DIR_N);
+    else if (!strncmp(k, "down", 4)) dk_input_dir(pl, DIR_S);
+    else if (!strncmp(k, "left", 4)) dk_input_dir(pl, DIR_W);
+    else if (!strncmp(k, "right", 5)) dk_input_dir(pl, DIR_E);
+    else if (!strncmp(k, "act", 3)) dk_input_action(pl);
+    else if (!strncmp(k, "pause", 5)) dk_input_pause();
+    else if (!strncmp(k, "back", 4)) dk_input_back();
     p = strchr(k, ',');
     if (p) p++;
 }
@@ -435,7 +295,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "the game did not open\n");
         return 1;
     }
-    pad_open();
+    dk_input_init(s_game);
 
     bool run = true;
     while (run) {
@@ -443,8 +303,10 @@ int main(int argc, char **argv)
         while (SDL_PollEvent(&e)) {
             switch (e.type) {
             case SDL_QUIT: run = false; break;
-            case SDL_KEYDOWN: on_key(&e.key, true); break;
-            case SDL_KEYUP: on_key(&e.key, false); break;
+            case SDL_KEYDOWN:
+                if (!hotkey(&e.key)) dk_input_key(&e.key, true);
+                break;
+            case SDL_KEYUP: dk_input_key(&e.key, false); break;
             case SDL_MOUSEMOTION:
                 s_mx = e.motion.x;
                 s_my = e.motion.y;
@@ -458,16 +320,10 @@ int main(int argc, char **argv)
                     s_mdown = e.type == SDL_MOUSEBUTTONDOWN;
                 }
                 break;
-            case SDL_CONTROLLERDEVICEADDED: pad_open(); break;
-            case SDL_CONTROLLERDEVICEREMOVED:
-                if (s_pad && !SDL_GameControllerGetAttached(s_pad)) {
-                    SDL_GameControllerClose(s_pad);
-                    s_pad = NULL;
-                    pad_open();
-                }
-                break;
-            case SDL_CONTROLLERBUTTONDOWN: on_pad_button(e.cbutton.button, true); break;
-            case SDL_CONTROLLERBUTTONUP: on_pad_button(e.cbutton.button, false); break;
+            case SDL_CONTROLLERDEVICEADDED: dk_input_pad_added(e.cdevice.which); break;
+            case SDL_CONTROLLERDEVICEREMOVED: dk_input_pad_removed(e.cdevice.which); break;
+            case SDL_CONTROLLERBUTTONDOWN: dk_input_pad_button(e.cbutton.which, e.cbutton.button, true); break;
+            case SDL_CONTROLLERBUTTONUP: dk_input_pad_button(e.cbutton.which, e.cbutton.button, false); break;
             case SDL_WINDOWEVENT:
                 if (e.window.event == SDL_WINDOWEVENT_FOCUS_LOST && s_app.hide) s_app.hide(&s_app, s_game);
                 s_dirty = true;
@@ -475,8 +331,7 @@ int main(int argc, char **argv)
             default: break;
             }
         }
-        stick_tick();
-        held_tick();
+        dk_input_tick();
         dev_keys();
         uint32_t idle = lv_timer_handler();
         dk_toast_tick();
@@ -494,7 +349,7 @@ int main(int argc, char **argv)
 
     s_app.destroy(&s_app, s_game);
     dk_prefs_flush(true);
-    if (s_pad) SDL_GameControllerClose(s_pad);
+    dk_input_close();
     SDL_DestroyTexture(s_tex);
     SDL_DestroyRenderer(s_ren);
     SDL_DestroyWindow(s_win);

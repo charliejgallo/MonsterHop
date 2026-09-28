@@ -28,3 +28,18 @@ bool dk_nav_dir(int dir);
 bool dk_nav_enter(void);
 void dk_nav_mouse(void);
 void dk_nav_tick(void);
+
+/* input.c: keys and gamepads, one player or two */
+typedef struct app app_t;
+typedef struct SDL_KeyboardEvent SDL_KeyboardEvent;
+void dk_input_init(app_t *game);
+void dk_input_key(const SDL_KeyboardEvent *e, bool down);
+void dk_input_pad_added(int device);
+void dk_input_pad_removed(int32_t id);
+void dk_input_pad_button(int32_t id, int button, bool down);
+void dk_input_tick(void);
+void dk_input_close(void);
+void dk_input_dir(int player, int dir);
+void dk_input_action(int player);
+void dk_input_pause(void);
+void dk_input_back(void);
