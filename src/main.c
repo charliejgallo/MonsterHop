@@ -135,6 +135,13 @@ static void toggle_fullscreen(void)
     aos_hal_pref_set_i32("dk_full", fs ? 0 : 1);
 }
 
+/* for the game's settings */
+bool mh_desktop_fullscreen(bool toggle)
+{
+    if (toggle) toggle_fullscreen();
+    return (SDL_GetWindowFlags(s_win) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
+}
+
 /* full screen, whatever the game is doing */
 static bool hotkey(const SDL_KeyboardEvent *e)
 {
