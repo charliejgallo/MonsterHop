@@ -40,6 +40,7 @@ static bool s_dirty;
 static SDL_Texture *s_game_tex;
 static const uint16_t *s_game_px;
 static int s_game_w, s_game_h;
+static uint32_t s_frames;       /* the game's, for MH_FPS */
 
 static aos_app_t s_app;
 static app_t *s_game;
@@ -61,6 +62,7 @@ bool aos_hal_display_blit(int x, int y, int w, int h, const void *rgb565)
     SDL_UpdateTexture(s_game_tex, NULL, rgb565, w * 2);
     s_game_px = (const uint16_t *)rgb565;
     s_dirty = true;
+    s_frames++;
     return true;
 }
 
@@ -156,7 +158,8 @@ static void present(void)
     static uint32_t n, t0;
     n++;
     if (SDL_GetTicks() - t0 > 2000) {
-        if (getenv("MH_FPS")) aos_hal_log("dk", "%u presents", (unsigned)n);
+        if (getenv("MH_FPS")) aos_hal_log("dk", "%u presents, %u frames", (unsigned)n, (unsigned)s_frames);
+        s_frames = 0;
         n = 0;
         t0 = SDL_GetTicks();
     }
@@ -293,8 +296,24 @@ int main(int argc, char **argv)
     dk_prefs_load();
     aos_hal_log("mh", "data %s | user %s", aos_hal_path_apps(), dk_user_dir());
 
+    /* the HD art when it is there (MH_HD=0 turns it off): the game draws
+     * twice as fine and the menus stay on their 800 x 450 layer */
     mh_view_w = DK_VIEW_W;
     mh_view_h = DK_VIEW_H;
+    {
+        char hd[1100];
+        snprintf(hd, sizeof hd, "%s/monsterhop_hd.pak", aos_hal_path_apps());
+        const char *e = getenv("MH_HD");
+        FILE *f = (e && e[0] == '0') ? NULL : fopen(hd, "rb");
+        if (f) {
+            fclose(f);
+            mh_px = 2;
+            mh_pak_name = "monsterhop_hd";
+            mh_view_w = DK_VIEW_W * 2;
+            mh_view_h = DK_VIEW_H * 2;
+        }
+        aos_hal_log("mh", "art %s, frame %d x %d", mh_px > 1 ? "HD" : "standard", mh_view_w, mh_view_h);
+    }
 
     int ww, wh;
     window_size(&ww, &wh);

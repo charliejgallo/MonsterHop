@@ -82,10 +82,16 @@ set(MH_SRC
     ${AOS_FONT_SRC})
 
 set(MH_PAK "${MH_GAME_DIR}/assets/monsterhop.pak")
+# the HD art (tools/pack_assets.py --hd), when it has been built
+set(MH_PAK_HD "${MH_GAME_DIR}/assets/monsterhop_hd.pak")
+set(MH_PAKS "${MH_PAK}")
+if(EXISTS "${MH_PAK_HD}")
+    list(APPEND MH_PAKS "${MH_PAK_HD}")
+endif()
 
 if(APPLE)
     set(MH_ICNS "${CMAKE_CURRENT_SOURCE_DIR}/packaging/MonsterHop.icns")
-    set(MH_BUNDLE_RES "${MH_PAK}")
+    set(MH_BUNDLE_RES ${MH_PAKS})
     if(EXISTS "${MH_ICNS}")
         list(APPEND MH_BUNDLE_RES "${MH_ICNS}")
     endif()
@@ -106,11 +112,11 @@ elseif(WIN32)
     add_executable(monsterhop WIN32 ${MH_SRC})
     set_target_properties(monsterhop PROPERTIES OUTPUT_NAME "MonsterHop")
     add_custom_command(TARGET monsterhop POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MH_PAK}" "$<TARGET_FILE_DIR:monsterhop>/monsterhop.pak")
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MH_PAKS} "$<TARGET_FILE_DIR:monsterhop>/")
 else()
     add_executable(monsterhop ${MH_SRC})
     add_custom_command(TARGET monsterhop POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MH_PAK}" "$<TARGET_FILE_DIR:monsterhop>/monsterhop.pak")
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MH_PAKS} "$<TARGET_FILE_DIR:monsterhop>/")
 endif()
 
 target_include_directories(monsterhop PRIVATE
@@ -125,7 +131,7 @@ target_include_directories(monsterhop PRIVATE
 # switches (MH_LEVEL, MH_UNLOCK...), as in the watch's simulator.
 # MH_VIEW_RUNTIME + the cache's size: the wider frame (src/desktop.h).
 target_compile_definitions(monsterhop PRIVATE
-    AOS_SIM AOS_SIM_BUILTIN MH_DESKTOP MH_VIEW_RUNTIME MH_CW=1024 MH_CH=640
+    AOS_SIM AOS_SIM_BUILTIN MH_DESKTOP MH_VIEW_RUNTIME MH_CW=2048 MH_CH=1280
     MH_VERSION="${MH_VERSION}")
 if(NOT MSVC)
     target_compile_options(monsterhop PRIVATE -Wall -Wno-unused-parameter -Wno-unused-function)
