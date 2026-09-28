@@ -1,0 +1,108 @@
+name: build
+
+# Every push builds both; a tag v* also publishes a release with the two zips.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            name: macOS
+          - os: windows-latest
+            name: Windows
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.os == 'windows-latest' && 'msys2 {0}' || 'bash' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Which AmoledOS
+        id: aos
+        shell: bash
+        run: |
+          echo "ref=$(tr -d ' \r\n' < amoledos.ref)" >> "$GITHUB_OUTPUT"
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # only what the game is made of: its code, the pack, the fonts, the
+      # translations and the HAL's headers (not the 95 MB of renders)
+      - uses: actions/checkout@v4
+        with:
+          repository: charliejgallo/ESP32S3_AmoledOS
+          ref: ${{ steps.aos.outputs.ref }}
+          path: amoledos
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /apps/monsterhop/main/
+            /apps/monsterhop/assets/monsterhop.pak
+            /components/aos_fonts/
+            /components/aos_ui/include/
+            /components/aos_ui/aos_i18n.c
+            /components/aos_ui/aos_lang_embedded.c
+            /components/aos_ui/aos_lang_embedded.h
+            /components/aos_ui/aos_theme.c
+            /components/aos_hal/include/
+
+      - name: Tools (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            git
+            zip
+
+      - name: Tools (macOS)
+        if: matrix.os == 'macos-14'
+        run: brew install ninja
+
+      - name: Build
+        run: |
+          VER="${{ startsWith(github.ref, 'refs/tags/v') && steps.aos.outputs.version || '0.0.0-dev' }}"
+          EXTRA=""
+          if [ "${{ matrix.os }}" = "macos-14" ]; then
+            EXTRA='-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0'
+          fi
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DAMOLEDOS_DIR="$PWD/amoledos" -DMH_VERSION="$VER" $EXTRA
+          cmake --build build
+
+      - name: Package (macOS)
+        if: matrix.os == 'macos-14'
+        run: |
+          # signed ad hoc: Gatekeeper still asks the first time (README)
+          codesign --force --deep --sign - "build/Monster Hop.app"
+          mkdir dist
+          ditto -c -k --keepParent "build/Monster Hop.app" dist/MonsterHop-macOS.zip
+
+      - name: Package (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          mkdir -p dist/MonsterHop
+          cp build/MonsterHop.exe build/monsterhop.pak dist/MonsterHop/
+          cp README.md dist/MonsterHop/README.txt
+          cd dist && zip -r MonsterHop-Windows.zip MonsterHop
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MonsterHop-${{ matrix.name }}
+          path: dist/*.zip
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip

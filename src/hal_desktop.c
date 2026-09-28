@@ -39,8 +39,11 @@ void dk_paths_init(void)
     else snprintf(s_res, sizeof s_res, ".");
     SDL_free(base);
     strip_slash(s_res);
-    char *pref = SDL_GetPrefPath("", "MonsterHop");
-    if (pref) snprintf(s_user, sizeof s_user, "%s", pref);
+    /* MH_USER: another place for prefs.txt (screenshots, tests) */
+    const char *uenv = getenv("MH_USER");
+    char *pref = uenv && uenv[0] ? NULL : SDL_GetPrefPath("", "MonsterHop");
+    if (uenv && uenv[0]) snprintf(s_user, sizeof s_user, "%s", uenv);
+    else if (pref) snprintf(s_user, sizeof s_user, "%s", pref);
     else snprintf(s_user, sizeof s_user, "%s", s_res);
     SDL_free(pref);
     strip_slash(s_user);
