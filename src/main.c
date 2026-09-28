@@ -192,10 +192,16 @@ static uint64_t s_held_next;
 static SDL_GameController *s_pad;
 static int s_stick_dir = -1;
 
+/* a way pressed: a hop while playing, the highlight on the menus */
+static void dir_press(int dir)
+{
+    if (!s_game || !mha_key_hop(s_game, dir)) dk_nav_dir(dir);
+}
+
 static void hop(int dir, int src)
 {
     if (!s_game) return;
-    mha_key_hop(s_game, dir);
+    dir_press(dir);
     s_held_dir = dir;
     s_held_src = src;
     s_held_next = SDL_GetTicks64() + REPEAT_FIRST_MS;
@@ -211,7 +217,7 @@ static void held_tick(void)
     if (s_held_dir < 0 || !s_game) return;
     uint64_t now = SDL_GetTicks64();
     if (now < s_held_next) return;
-    mha_key_hop(s_game, s_held_dir);
+    dir_press(s_held_dir);
     s_held_next = now + REPEAT_MS;
 }
 
@@ -257,7 +263,7 @@ static void on_key(const SDL_KeyboardEvent *e, bool down)
     }
     switch (k) {
     case SDLK_SPACE: case SDLK_RETURN: case SDLK_KP_ENTER: case SDLK_z: case SDLK_j:
-        if (s_game) mha_key_action(s_game);
+        if (s_game && !mha_key_action(s_game)) dk_nav_enter();
         break;
     case SDLK_ESCAPE: case SDLK_p:
         pause_or_back();
@@ -291,7 +297,9 @@ static void on_pad_button(int b, bool down)
     }
     if (!down || !s_game) return;
     switch (b) {
-    case SDL_CONTROLLER_BUTTON_A: case SDL_CONTROLLER_BUTTON_X: mha_key_action(s_game); break;
+    case SDL_CONTROLLER_BUTTON_A: case SDL_CONTROLLER_BUTTON_X:
+        if (!mha_key_action(s_game)) dk_nav_enter();
+        break;
     case SDL_CONTROLLER_BUTTON_START: pause_or_back(); break;
     case SDL_CONTROLLER_BUTTON_B: case SDL_CONTROLLER_BUTTON_BACK: back_or_quit(); break;
     default: break;
@@ -341,11 +349,13 @@ static void dev_keys(void)
         return;
     }
     k++;
-    if (!strncmp(k, "up", 2)) mha_key_hop(s_game, DIR_N);
-    else if (!strncmp(k, "down", 4)) mha_key_hop(s_game, DIR_S);
-    else if (!strncmp(k, "left", 4)) mha_key_hop(s_game, DIR_W);
-    else if (!strncmp(k, "right", 5)) mha_key_hop(s_game, DIR_E);
-    else if (!strncmp(k, "act", 3)) mha_key_action(s_game);
+    if (!strncmp(k, "up", 2)) dir_press(DIR_N);
+    else if (!strncmp(k, "down", 4)) dir_press(DIR_S);
+    else if (!strncmp(k, "left", 4)) dir_press(DIR_W);
+    else if (!strncmp(k, "right", 5)) dir_press(DIR_E);
+    else if (!strncmp(k, "act", 3)) {
+        if (!mha_key_action(s_game)) dk_nav_enter();
+    }
     else if (!strncmp(k, "pause", 5)) pause_or_back();
     else if (!strncmp(k, "back", 4)) back_or_quit();
     p = strchr(k, ',');
@@ -435,7 +445,11 @@ int main(int argc, char **argv)
             case SDL_QUIT: run = false; break;
             case SDL_KEYDOWN: on_key(&e.key, true); break;
             case SDL_KEYUP: on_key(&e.key, false); break;
-            case SDL_MOUSEMOTION: s_mx = e.motion.x; s_my = e.motion.y; break;
+            case SDL_MOUSEMOTION:
+                s_mx = e.motion.x;
+                s_my = e.motion.y;
+                dk_nav_mouse();
+                break;
             case SDL_MOUSEBUTTONDOWN:
             case SDL_MOUSEBUTTONUP:
                 if (e.button.button == SDL_BUTTON_LEFT) {
@@ -466,6 +480,7 @@ int main(int argc, char **argv)
         dev_keys();
         uint32_t idle = lv_timer_handler();
         dk_toast_tick();
+        dk_nav_tick();
         dev_shots();
         dk_prefs_flush(false);
         if (dk_quit_asked()) run = false;

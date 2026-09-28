@@ -22,3 +22,9 @@ typedef struct aos_app_s aos_app_t;
 bool (*dk_app_init(void))(aos_app_t *);
 bool dk_quit_asked(void);
 void dk_toast_tick(void);
+
+/* nav.c: the menus with keys (dir 0 up, 1 right, 2 down, 3 left) */
+bool dk_nav_dir(int dir);
+bool dk_nav_enter(void);
+void dk_nav_mouse(void);
+void dk_nav_tick(void);

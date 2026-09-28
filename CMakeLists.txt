@@ -68,6 +68,7 @@ set(MH_SRC
     src/main.c
     src/hal_desktop.c
     src/ui_desktop.c
+    src/nav.c
     ${MH_GAME_SRC}
     ${AOS_UI_SRC}
     ${AOS_FONT_SRC})
