@@ -32,14 +32,39 @@
 
 static SDL_Window *s_win;
 static SDL_Renderer *s_ren;
-static SDL_Texture *s_tex;
-static uint16_t *s_fb;
+static SDL_Texture *s_tex;          /* LVGL's layer: the menus, ARGB        */
+static uint32_t *s_fb;
 static bool s_dirty;
+/* the game's frames come straight from the game (aos_hal_display_blit), at
+ * their own size (800 x 450, or 1600 x 900 with the HD art), under LVGL */
+static SDL_Texture *s_game_tex;
+static const uint16_t *s_game_px;
+static int s_game_w, s_game_h;
 
 static aos_app_t s_app;
 static app_t *s_game;
 
-/* ---- LVGL's display: one whole frame, straight into the texture ---- */
+/* ---- the game's frames ---- */
+
+bool aos_hal_display_blit(int x, int y, int w, int h, const void *rgb565)
+{
+    (void)x;
+    (void)y;
+    if (!s_ren) return false;
+    if (!s_game_tex || w != s_game_w || h != s_game_h) {
+        if (s_game_tex) SDL_DestroyTexture(s_game_tex);
+        s_game_tex = SDL_CreateTexture(s_ren, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, w, h);
+        s_game_w = w;
+        s_game_h = h;
+    }
+    if (!s_game_tex) return false;
+    SDL_UpdateTexture(s_game_tex, NULL, rgb565, w * 2);
+    s_game_px = (const uint16_t *)rgb565;
+    s_dirty = true;
+    return true;
+}
+
+/* ---- LVGL's display: the menus' layer, transparent where the game shows ---- */
 
 static uint32_t tick_cb(void)
 {
@@ -91,11 +116,32 @@ static void dev_shots(void)
         return;
     }
     if (SDL_GetTicks64() < (uint64_t)atol(p)) return;
-    SDL_Surface *sf = SDL_CreateRGBSurfaceWithFormatFrom(s_fb, DK_VIEW_W, DK_VIEW_H, 16, DK_VIEW_W * 2,
-                                                         SDL_PIXELFORMAT_RGB565);
+    /* the game's frame at its size, the menus' layer over it */
+    int w = s_game_px ? s_game_w : DK_VIEW_W, h = s_game_px ? s_game_h : DK_VIEW_H;
+    SDL_Surface *sf = SDL_CreateRGBSurfaceWithFormat(0, w, h, 24, SDL_PIXELFORMAT_RGB24);
     char path[512];
     snprintf(path, sizeof path, "%s_%d.bmp", pre, n);
     if (sf) {
+        for (int yy = 0; yy < h; yy++) {
+            uint8_t *row = (uint8_t *)sf->pixels + (size_t)yy * sf->pitch;
+            for (int xx = 0; xx < w; xx++) {
+                int r = 0, g = 0, b = 0;
+                if (s_game_px) {
+                    uint16_t c = s_game_px[(size_t)yy * w + xx];
+                    r = (c >> 8) & 0xF8;
+                    g = (c >> 3) & 0xFC;
+                    b = (c << 3) & 0xF8;
+                }
+                uint32_t u = s_fb[(size_t)(yy * DK_VIEW_H / h) * DK_VIEW_W + xx * DK_VIEW_W / w];
+                int a = (int)(u >> 24);
+                r = (r * (255 - a) + (int)((u >> 16) & 255) * a) / 255;
+                g = (g * (255 - a) + (int)((u >> 8) & 255) * a) / 255;
+                b = (b * (255 - a) + (int)(u & 255) * a) / 255;
+                row[xx * 3] = (uint8_t)r;
+                row[xx * 3 + 1] = (uint8_t)g;
+                row[xx * 3 + 2] = (uint8_t)b;
+            }
+        }
         SDL_SaveBMP(sf, path);
         SDL_FreeSurface(sf);
     }
@@ -114,16 +160,19 @@ static void present(void)
         n = 0;
         t0 = SDL_GetTicks();
     }
-    SDL_UpdateTexture(s_tex, NULL, s_fb, DK_VIEW_W * 2);
+    SDL_UpdateTexture(s_tex, NULL, s_fb, DK_VIEW_W * 4);
     /* whole multiples stay sharp; anything else is filtered */
     int ow = 0, oh = 0;
     SDL_GetRendererOutputSize(s_ren, &ow, &oh);
-    int kx = ow / DK_VIEW_W, ky = oh / DK_VIEW_H;
+    int gw = s_game_tex ? s_game_w : DK_VIEW_W, gh = s_game_tex ? s_game_h : DK_VIEW_H;
+    int kx = ow / gw, ky = oh / gh;
     int k = kx < ky ? kx : ky;
-    bool exact = k >= 1 && (ow == k * DK_VIEW_W || oh == k * DK_VIEW_H);
-    SDL_SetTextureScaleMode(s_tex, exact ? SDL_ScaleModeNearest : SDL_ScaleModeLinear);
+    bool exact = k >= 1 && (ow == k * gw || oh == k * gh);
+    if (s_game_tex) SDL_SetTextureScaleMode(s_game_tex, exact ? SDL_ScaleModeNearest : SDL_ScaleModeLinear);
+    SDL_SetTextureScaleMode(s_tex, SDL_ScaleModeLinear);
     SDL_SetRenderDrawColor(s_ren, 0, 0, 0, 255);
     SDL_RenderClear(s_ren);
+    if (s_game_tex) SDL_RenderCopy(s_ren, s_game_tex, NULL, NULL);
     SDL_RenderCopy(s_ren, s_tex, NULL, NULL);
     SDL_RenderPresent(s_ren);
 }
@@ -259,16 +308,17 @@ int main(int argc, char **argv)
     s_ren = SDL_CreateRenderer(s_win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!s_ren) s_ren = SDL_CreateRenderer(s_win, -1, 0);
     SDL_RenderSetLogicalSize(s_ren, DK_VIEW_W, DK_VIEW_H);
-    s_tex = SDL_CreateTexture(s_ren, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, DK_VIEW_W, DK_VIEW_H);
+    s_tex = SDL_CreateTexture(s_ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, DK_VIEW_W, DK_VIEW_H);
+    SDL_SetTextureBlendMode(s_tex, SDL_BLENDMODE_BLEND);
     int32_t full = 0;
     if (aos_hal_pref_get_i32("dk_full", &full) && full) SDL_SetWindowFullscreen(s_win, SDL_WINDOW_FULLSCREEN_DESKTOP);
 
     lv_init();
     lv_tick_set_cb(tick_cb);
     lv_display_t *disp = lv_display_create(DK_VIEW_W, DK_VIEW_H);
-    size_t fb_bytes = (size_t)DK_VIEW_W * DK_VIEW_H * 2;
-    s_fb = (uint16_t *)calloc(1, fb_bytes);
-    lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
+    size_t fb_bytes = (size_t)DK_VIEW_W * DK_VIEW_H * 4;
+    s_fb = (uint32_t *)calloc(1, fb_bytes);
+    lv_display_set_color_format(disp, LV_COLOR_FORMAT_ARGB8888);
     lv_display_set_buffers(disp, s_fb, NULL, (uint32_t)fb_bytes, LV_DISPLAY_RENDER_MODE_DIRECT);
     lv_display_set_flush_cb(disp, flush_cb);
     lv_indev_t *mouse = lv_indev_create();
@@ -276,6 +326,9 @@ int main(int argc, char **argv)
     lv_indev_set_read_cb(mouse, mouse_read);
 
     aos_theme_init();
+    /* the screen itself is see-through: the game shows under the panels */
+    lv_obj_set_style_bg_opa(lv_screen_active(), LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_opa(lv_layer_bottom(), LV_OPA_TRANSP, 0);
     language();
 
     /* the watch-sized column the game's panels are laid out in */

@@ -299,17 +299,7 @@ void aos_hal_beep(int freq_hz, int ms)
     (void)ms;
 }
 
-/* ---- the panel: there is none, the game draws through LVGL's canvas ---- */
-
-bool aos_hal_display_blit(int x, int y, int w, int h, const void *rgb565_be)
-{
-    (void)x;
-    (void)y;
-    (void)w;
-    (void)h;
-    (void)rgb565_be;
-    return false;
-}
+/* aos_hal_display_blit() is the window's (main.c) */
 
 /* ---- the radio link: not on the desktop ---- */
 
