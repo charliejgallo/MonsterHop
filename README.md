@@ -162,6 +162,11 @@ watch's HAL the game calls, the controls, and the menus driven by keys.
 | De a dos | en la casa de Tommy, *Jugar con un amigo*: pantalla dividida, con joysticks o los dos en el teclado |
 | Idioma | el del sistema (castellano, inglés o alemán) |
 
+## Credits
+
+Made by [Charlie Gallo](https://github.com/charliejgallo), with Claude
+(Anthropic) writing code, levels and render scripts alongside.
+
 ## License
 
 The code is MIT like AmoledOS. The art and music are part of the game and
